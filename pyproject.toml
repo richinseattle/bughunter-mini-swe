@@ -53,6 +53,11 @@ full = [
     "swe-rex>=1.4.0",
     "mini-swe-agent[modal]",
     "mini-swe-agent[contree]",
+    "mini-swe-agent[bughunter]",
+]
+
+bughunter = [
+    "fastmcp>=2",
 ]
 
 modal = [
@@ -75,6 +80,7 @@ dev = [
     "mkdocs-redirects",
     "portkey-ai",
     "swe-rex",
+    "fastmcp",
 ]
 
 contree = [
@@ -91,6 +97,7 @@ mini = "minisweagent.run.mini:app"
 mini-swe-agent = "minisweagent.run.mini:app"
 mini-extra = "minisweagent.run.utilities.mini_extra:main"
 mini-e= "minisweagent.run.utilities.mini_extra:main"
+bughunter = "minisweagent.bughunter.run:app"
 
 [tool.setuptools]
 include-package-data = true
@@ -103,7 +110,7 @@ where = ["src"]
 include = ["minisweagent*"]
 
 [tool.setuptools.package-data]
-minisweagent = ["config/**/*"]
+minisweagent = ["config/**/*", "bughunter/config/**/*"]
 
 [tool.ruff]
 # Exclude a variety of commonly ignored directories.

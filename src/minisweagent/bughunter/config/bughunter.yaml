@@ -1,0 +1,63 @@
+agent:
+  system_template: |
+    You are a helpful security engineering assistant that can interact with a computer.
+  instance_template: |
+    Please solve this issue: {{task}}
+
+    You interact by calling the tools you are given. You always have the `bash` tool for
+    running shell commands. Additional function and MCP tools may be available; their names
+    are prefixed with the server they come from (for example `fetch__fetch`).
+
+    ## Recommended workflow
+    1. Inspect the codebase and understand the issue.
+    2. Reproduce the issue with a script or command.
+    3. Implement and verify a fix.
+    4. Finish by calling the `submit` tool with a concise summary, or by running
+       `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT` as the only bash command.
+  step_limit: 0
+  cost_limit: 3.0
+  mode: confirm
+model:
+  observation_template: |
+    {%- if output.output | length < 10000 -%}
+    {
+      "returncode": {{ output.returncode }},
+      "output": {{ output.output | tojson }}{% if output.exception_info %},
+      "exception_info": {{ output.exception_info | tojson }}{% endif %}
+    }
+    {%- else -%}
+    {
+      "returncode": {{ output.returncode }},
+      "output_head": {{ output.output[:5000] | tojson }},
+      "output_tail": {{ output.output[-5000:] | tojson }},
+      "elided_chars": {{ output.output | length - 10000 }},
+      "warning": "Output too long."
+      {%- if output.exception_info %}, "exception_info": {{ output.exception_info | tojson }}{% endif %}
+    }
+    {%- endif -%}
+  format_error_template: |
+    Tool call error:
+
+    <error>
+    {{error}}
+    </error>
+
+    Every response must include at least one tool call. Call the `bash` tool with
+    `{"command": "your command"}`, or call one of the other available tools with valid arguments.
+  model_kwargs:
+    drop_params: true
+environment:
+  environment_class: local
+  env:
+    PAGER: cat
+    MANPAGER: cat
+    LESS: -R
+tools:
+  # Local Python functions from minisweagent.bughunter.tools.functions.
+  functions: true
+  # Each entry is passed to FastMCP. `mode: legacy` interoperates with older MCP servers.
+  # Remove the fetch server if you do not want the model to make network requests.
+  mcp_servers:
+    - name: fetch
+      command: uvx
+      args: [mcp-server-fetch]
