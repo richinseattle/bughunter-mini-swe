@@ -8,6 +8,9 @@ agent:
     running shell commands. Additional function and MCP tools may be available; their names
     are prefixed with the server they come from (for example `fetch__fetch`).
 
+    For remote hosts, use the dedicated SSH tools (`ssh_connect`, `ssh_exec`, `ssh_upload`,
+    `ssh_download`, `ssh_disconnect`) instead of the local `ssh`/`scp` binaries.
+
     ## Recommended workflow
     1. Inspect the codebase and understand the issue.
     2. Reproduce the issue with a script or command.
@@ -55,9 +58,41 @@ environment:
 tools:
   # Local Python functions from minisweagent.bughunter.tools.functions.
   functions: true
-  # Each entry is passed to FastMCP. `mode: legacy` interoperates with older MCP servers.
-  # Remove the fetch server if you do not want the model to make network requests.
-  mcp_servers:
-    - name: fetch
+  # Static guardrail on binaries the bash tool may execute. This is not a sandbox:
+  # interpreters and command substitution can bypass it -- use the docker environment
+  # for real isolation. mode: blocklist | whitelist | off.
+  binary_policy:
+    mode: blocklist
+    # blocklist: [...]   # replaces the default high-risk set (ssh, nc, curl, sudo, ...)
+    # whitelist: [...]   # used when mode: whitelist; commands outside it are blocked
+  # SSH tools backed by asyncssh (ssh_connect/ssh_disconnect/ssh_exec/ssh_upload/ssh_download).
+  ssh:
+    enabled: true
+    connect_timeout: 30
+    timeout: 30
+    # Set to "none" to skip host key verification (e.g. for ephemeral lab targets).
+    # known_hosts: "none"
+    hosts:
+      # Named host profiles let the model connect without seeing credentials:
+      # target:
+      #   host: 10.0.0.5
+      #   username: root
+      #   port: 22
+      #   private_key: ~/.ssh/id_ed25519
+      #   password_env: SSH_PASSWORD
+  # MCP servers are defined once in the global config (~/.config/mini-swe-agent/bughunter.yaml)
+  # and enabled by group so the advertised tool list stays small. Definitions live in the
+  # catalog; nothing is exposed until it is listed in `mcp_servers` (or an enabled group).
+  mcp_server_catalog:
+    fetch:
       command: uvx
       args: [mcp-server-fetch]
+    # shodan:
+    #   url: https://mcp.shodan.io/mcp
+    #   headers: {Authorization: "Bearer ${SHODAN_API_KEY}"}
+  mcp_server_groups:
+    web: [fetch]
+    # recon: [fetch, shodan]
+  # Enable groups or individual servers here, e.g.:
+  # mcp_servers: [web]
+

@@ -58,6 +58,7 @@ full = [
 
 bughunter = [
     "fastmcp>=2",
+    "asyncssh>=2",
 ]
 
 modal = [
@@ -81,6 +82,7 @@ dev = [
     "portkey-ai",
     "swe-rex",
     "fastmcp",
+    "asyncssh",
 ]
 
 contree = [

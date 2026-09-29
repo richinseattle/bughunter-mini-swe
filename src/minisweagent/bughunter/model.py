@@ -18,18 +18,25 @@ class BughunterModel(LitellmModel):
     """Like ``LitellmModel``, but ``tools`` come from the tool registry instead of a hardcoded ``bash``."""
 
     def __init__(
-        self, *, tool_schemas: list[dict] | None = None, config_class: Callable = BughunterModelConfig, **kwargs
+        self,
+        *,
+        tool_schemas: list[dict] | None = None,
+        api_key: str | None = None,
+        config_class: Callable = BughunterModelConfig,
+        **kwargs,
     ) -> None:
         super().__init__(config_class=config_class, **kwargs)
         self._tool_schemas = list(tool_schemas or [])
+        self._api_key = api_key  # kept off the pydantic config so it is never serialized
 
     def _query(self, messages: list[dict[str, str]], **kwargs):
+        api_key = {"api_key": self._api_key} if self._api_key else {}
         try:
             return litellm.completion(
                 model=self.config.model_name,
                 messages=messages,
                 tools=self._tool_schemas,
-                **(self.config.model_kwargs | kwargs),
+                **(self.config.model_kwargs | api_key | kwargs),
             )
         except litellm.exceptions.AuthenticationError as e:
             e.message += " You can permanently set your API key with `mini-extra config set KEY VALUE`."

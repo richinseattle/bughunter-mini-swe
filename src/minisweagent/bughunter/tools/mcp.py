@@ -51,12 +51,22 @@ class McpClient:
     """
 
     def __init__(
-        self, transport, runner: AsyncRunner, *, name: str, prefix: str | None = None, mode: str = DEFAULT_MODE
+        self,
+        transport,
+        runner: AsyncRunner,
+        *,
+        name: str,
+        prefix: str | None = None,
+        mode: str = DEFAULT_MODE,
+        include_tools: list[str] | None = None,
+        exclude_tools: list[str] | None = None,
     ) -> None:
         self.name = name
-        self.prefix = prefix or f"{sanitize_tool_name(name)}__"
+        self.prefix = prefix if prefix is not None else f"{sanitize_tool_name(name)}__"
         self._client = Client({"mcpServers": {name: transport}} if not _is_server(transport) else transport, mode=mode)
         self._runner = runner
+        self._include = set(include_tools or ())
+        self._exclude = set(exclude_tools or ())
         self._stack: AsyncExitStack | None = None
         self._schemas: list[dict] = []
         self._tool_names: dict[str, str] = {}
@@ -66,6 +76,10 @@ class McpClient:
         self._runner.run(self._stack.enter_async_context(self._client))
         self._tool_names, self._schemas = {}, []
         for tool in self._runner.run(self._client.list_tools()):
+            if self._include and tool.name not in self._include:
+                continue
+            if tool.name in self._exclude:
+                continue
             exposed = self.prefix + sanitize_tool_name(tool.name)
             self._tool_names[exposed] = tool.name
             self._schemas.append(

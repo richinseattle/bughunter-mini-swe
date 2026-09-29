@@ -23,3 +23,10 @@ def test_runs_from_its_own_directory():
 def test_runs_as_module_from_repo_root():
     result = _run(["-m", "minisweagent.bughunter", "--help"], REPO)
     assert result.returncode == 0, result.stderr
+
+
+def test_list_tools_exposes_local_and_ssh_tools():
+    result = _run(["-m", "minisweagent.bughunter", "--list-tools"], REPO)
+    assert result.returncode == 0, result.stderr
+    assert "local__record_note" in result.stdout
+    assert "ssh_exec" in result.stdout

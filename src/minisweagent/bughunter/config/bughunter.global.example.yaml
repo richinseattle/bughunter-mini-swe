@@ -1,0 +1,44 @@
+# Example global bughunter config.
+#
+# Copy to your global config dir and edit:
+#   cp bughunter.global.example.yaml ~/.config/mini-swe-agent/bughunter.yaml
+# or point MSWEA_GLOBAL_CONFIG_DIR at a directory containing it.
+#
+# Layering (later wins): packaged defaults < this file < -c specs < CLI flags.
+
+tools:
+  # Define servers once here, group them, then enable only the groups you need.
+  # Enabling a group is what adds its tool definitions to the model context.
+  mcp_server_catalog:
+    fetch:
+      command: uvx
+      args: [mcp-server-fetch]
+    github:
+      url: https://api.githubcopilot.com/mcp/
+      headers:
+        Authorization: "Bearer ${GITHUB_TOKEN}"
+    shodan:
+      url: https://mcp.shodan.io/mcp
+      headers:
+        Authorization: "Bearer ${SHODAN_API_KEY}"
+      # Optionally trim a chatty server's tools:
+      # include_tools: [search_hosts, host_info]
+    sqlite:
+      command: uvx
+      args: [mcp-server-sqlite, --db, ./findings.sqlite]
+      env:
+        MCP_LOG_LEVEL: info
+
+  mcp_server_groups:
+    web: [fetch]
+    recon: [fetch, shodan]
+    code: [github]
+    data: [sqlite]
+
+  # Only these groups are exposed. Keep it small to avoid context bloat.
+  mcp_servers: [web, code]
+
+  # Override the packaged binary policy if needed.
+  # binary_policy:
+  #   mode: whitelist
+  #   whitelist: [ls, cat, grep, sed, find, head, tail, rg, git, python, pip, make]

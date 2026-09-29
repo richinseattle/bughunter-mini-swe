@@ -3,9 +3,7 @@ from types import SimpleNamespace
 import pytest
 
 from minisweagent.bughunter.model import parse_tool_calls
-from minisweagent.bughunter.tools.mcp import AsyncRunner, sanitize_tool_name
-from minisweagent.bughunter.tools.registry import ToolRegistry
-from minisweagent.environments.local import LocalEnvironment
+from minisweagent.bughunter.tools.mcp import sanitize_tool_name
 from minisweagent.exceptions import FormatError, Submitted
 
 fastmcp = pytest.importorskip("fastmcp")
@@ -13,20 +11,6 @@ fastmcp = pytest.importorskip("fastmcp")
 
 def tool_call(name: str, arguments: str, call_id: str = "call_1") -> SimpleNamespace:
     return SimpleNamespace(id=call_id, function=SimpleNamespace(name=name, arguments=arguments))
-
-
-@pytest.fixture
-def runner():
-    runner = AsyncRunner()
-    yield runner
-    runner.close()
-
-
-@pytest.fixture
-def registry(runner):
-    registry = ToolRegistry(LocalEnvironment(), runner)
-    yield registry
-    registry.close()
 
 
 @pytest.mark.parametrize(
