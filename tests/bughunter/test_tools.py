@@ -96,3 +96,56 @@ def test_tool_exception_is_returned_as_observation(registry):
 def test_submit_raises_submitted(registry):
     with pytest.raises(Submitted):
         registry.execute({"tool": "submit", "args": {"summary": "all done"}})
+
+
+def test_registry_native_tool(registry):
+    def add(a: int, b: int) -> str:
+        """Add two integers."""
+        return str(a + b)
+
+    registry.add_tool(add)
+    assert "add" in registry.tool_names()
+    output = registry.execute({"tool": "add", "args": {"a": 2, "b": 3}})
+    assert output["returncode"] == 0
+    assert output["output"] == "5"
+
+
+def test_registry_native_tool_errors_are_observations(registry):
+    def explode() -> str:
+        """Always fails."""
+        raise ValueError("kaboom")
+
+    registry.add_tool(explode)
+    output = registry.execute({"tool": "explode", "args": {}})
+    assert output["returncode"] == -1
+    assert "kaboom" in output["exception_info"]
+
+
+def test_registry_can_disable_bash(runner):
+    from minisweagent.bughunter.tools.registry import ToolRegistry
+    from minisweagent.environments.local import LocalEnvironment
+
+    registry = ToolRegistry(LocalEnvironment(), runner, include_bash=False)
+    try:
+        assert "bash" not in registry.tool_names()
+        assert registry.execute({"tool": "bash", "command": "ls"})["returncode"] == 1
+    finally:
+        registry.close()
+
+
+def test_registry_include_tools_filters_schemas(registry):
+    server = fastmcp.FastMCP("many")
+
+    @server.tool
+    def alpha() -> str:
+        """Alpha tool."""
+        return "a"
+
+    @server.tool
+    def beta() -> str:
+        """Beta tool."""
+        return "b"
+
+    registry.add_server(server, name="many", include_tools=["alpha"])
+    assert "many__alpha" in registry.tool_names()
+    assert "many__beta" not in registry.tool_names()

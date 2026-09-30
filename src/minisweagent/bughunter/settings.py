@@ -54,11 +54,15 @@ def load_yaml(path: Path | str) -> dict:
     return yaml.safe_load(path.read_text(encoding="utf-8")) or {} if path.is_file() else {}
 
 
-def load_bughunter_config(config_specs: list[str], overrides: dict, default_config_file: Path) -> dict:
-    """Layer the bughunter config: packaged defaults < global < local (``./bughunter.yaml``) < ``-c`` specs < CLI flags.
+def load_bughunter_config(
+    config_specs: list[str], overrides: dict, default_config_file: Path, preset: dict | None = None
+) -> dict:
+    """Layer the bughunter config: packaged defaults < global < local < role preset < ``-c`` specs < CLI flags.
 
-    If ``-c`` replaces the packaged default file, that key is simply absent from the specs
-    and the packaged defaults are not loaded (matching mini-swe-agent's documented behavior).
+    The role preset sits above ambient global/local config (selecting a role is explicit),
+    but explicit ``-c`` specs and CLI flags still win. If ``-c`` replaces the packaged
+    default file, that key is absent from the specs and the packaged defaults are not loaded
+    (matching mini-swe-agent's documented behavior).
     """
     from minisweagent.config import get_config_from_spec
 
@@ -70,6 +74,7 @@ def load_bughunter_config(config_specs: list[str], overrides: dict, default_conf
         specs = [spec for spec in specs if spec != str(default_config_file)]
     parts.append(load_yaml(GLOBAL_CONFIG_FILE))
     parts.append(load_yaml(local_config_file()))
+    parts.append(preset or {})
     parts += [get_config_from_spec(spec) for spec in specs]
     parts.append(overrides)
 

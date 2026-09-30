@@ -9,9 +9,9 @@ All three invocation styles work::
     python run.py -t "..."                    # directly from this directory
 
 Configuration is layered (later wins): packaged defaults, the global user config
-(``~/.config/mini-swe-agent/bughunter.yaml``), the project-local ``./bughunter.yaml``,
-``-c`` specs, then CLI flags. LLM service endpoints live in a separate ``llm.yaml``
-(global and/or ``./llm.yaml``). ``.env`` files are loaded by default.
+(``~/.config/mini-swe-agent/bughunter.yaml``), the project-local ``./bughunter.yaml``, the
+role preset (``--role``), ``-c`` specs, then CLI flags. LLM service endpoints live in a
+separate ``llm.yaml`` (global and/or ``./llm.yaml``). ``.env`` files are loaded by default.
 """
 
 if __package__ in (None, ""):
@@ -20,6 +20,8 @@ if __package__ in (None, ""):
 
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
+import logging
+import os
 from pathlib import Path
 from typing import Any
 
@@ -30,6 +32,7 @@ from minisweagent import global_config_dir
 from minisweagent.agents.utils.prompt_user import _multiline_prompt
 from minisweagent.bughunter.agent import BughunterAgent
 from minisweagent.bughunter.model import BughunterModel
+from minisweagent.bughunter.roles import ROLE_DESCRIPTIONS, get_role, role_names
 from minisweagent.bughunter.settings import (
     load_bughunter_config,
     load_env_files,
@@ -51,12 +54,18 @@ DEFAULT_CONFIG_FILE = Path(__file__).parent / "config" / "bughunter.yaml"
 DEFAULT_OUTPUT_FILE = global_config_dir / "last_bughunter_run.traj.json"
 
 console = Console(highlight=False)
+logger = logging.getLogger("bughunter")
 app = typer.Typer(rich_markup_mode="rich")
 
 
 def _build_registry(config: dict, env, runner: AsyncRunner) -> ToolRegistry:
     tools = config.get("tools", {})
-    registry = ToolRegistry(env, runner, binary_policy=BinaryPolicy.from_config(tools.get("binary_policy", {})))
+    registry = ToolRegistry(
+        env,
+        runner,
+        binary_policy=BinaryPolicy.from_config(tools.get("binary_policy", {})),
+        include_bash=tools.get("include_bash", True),
+    )
     if tools.get("functions", True):
         registry.add_server(build_local_server(), name="local")
     ssh_config = tools.get("ssh", {})
@@ -72,25 +81,26 @@ def _build_registry(config: dict, env, runner: AsyncRunner) -> ToolRegistry:
         registry.add_cleanup(lambda: runner.run(manager.aclose_all()))
     for server in resolve_mcp_servers(tools):
         name = server.pop("name")
-        registry.add_server(
-            server,
-            name=name,
-            mode=server.pop("mode", "legacy"),
-            prefix=server.pop("prefix", None),
-            include_tools=server.pop("include_tools", None),
-            exclude_tools=server.pop("exclude_tools", None),
-        )
+        try:
+            registry.add_server(
+                server,
+                name=name,
+                mode=server.pop("mode", "legacy"),
+                prefix=server.pop("prefix", None),
+                include_tools=server.pop("include_tools", None),
+                exclude_tools=server.pop("exclude_tools", None),
+            )
+        except Exception as e:  # optional MCP servers (e.g. missing API key) should not abort the run
+            logger.warning("Skipping MCP server '%s': %s", name, e)
+            console.print(f"[yellow]Skipping MCP server '{name}': {e}[/yellow]")
     return registry
-
-
-def _load_config(config_spec: list[str], overrides: dict) -> dict:
-    return load_bughunter_config(config_spec, overrides, DEFAULT_CONFIG_FILE)
 
 
 # fmt: off
 @app.command()
 def main(
     task: str | None = typer.Option(None, "-t", "--task", help="Task/problem statement", show_default=False),
+    role: str | None = typer.Option(None, "--role", help="Agent role (e.g. overthewire, recon)"),
     model_name: str | None = typer.Option(None, "-m", "--model", help="Model to use"),
     service: str | None = typer.Option(None, "--service", help="Named LLM service from llm.yaml"),
     llm_config: list[Path] = typer.Option([], "-L", "--llm-config", help="Extra llm.yaml file(s)"),
@@ -101,11 +111,17 @@ def main(
     cost_limit: float | None = typer.Option(None, "-l", "--cost-limit", help="Cost limit. Set to 0 to disable."),
     output: Path | None = typer.Option(DEFAULT_OUTPUT_FILE, "-o", "--output", help="Output trajectory file"),
     list_tools: bool = typer.Option(False, "--list-tools", help="List available tools and exit", rich_help_panel="Advanced"),
+    list_roles: bool = typer.Option(False, "--list-roles", help="List available roles and exit", rich_help_panel="Advanced"),
 ) -> Any:
     # fmt: on
+    if list_roles:
+        for name in role_names():
+            console.print(f"[bold green]{name}[/bold green]: {ROLE_DESCRIPTIONS[name]}")
+        return None
     configure_if_first_time()
+    role_obj = get_role(role or os.getenv("BUGHUNTER_ROLE") or "generic")
     load_env_files(*[Path(spec).resolve().parent for spec in config_spec if "=" not in spec])
-    config = _load_config(config_spec, {
+    config = load_bughunter_config(config_spec, {
         "run": {"task": task or UNSET},
         "agent": {
             "mode": "yolo" if yolo else UNSET,
@@ -113,7 +129,7 @@ def main(
             "output_path": output or UNSET,
         },
         "model": {"model_name": model_name or UNSET},
-    })
+    }, DEFAULT_CONFIG_FILE, preset=role_obj.configure())
     if mcp_group or mcp_server:
         tools = config.setdefault("tools", {})
         tools["mcp_servers"] = [*tools.get("mcp_servers", []), *mcp_group, *mcp_server]
@@ -123,6 +139,7 @@ def main(
     registry = None
     try:
         registry = _build_registry(config, env, runner)
+        role_obj.add_tools(registry, config, runner)
         if list_tools:
             for tool in registry.schemas():
                 function = tool["function"]
@@ -140,10 +157,11 @@ def main(
         model = BughunterModel(tool_schemas=registry.schemas(), api_key=api_key, **model_config)
         agent = BughunterAgent(model, env, tools=registry, **config.get("agent", {}))
         run_task = config.get("run", {}).get("task", UNSET)
-        if run_task is UNSET:
+        if run_task is UNSET and role_obj.name == "generic":
             console.print("[bold yellow]What do you want to do?")
             run_task = _multiline_prompt()
-        agent.run(run_task)
+            config.setdefault("run", {})["task"] = run_task
+        role_obj.run(agent, config)
         if output_path := config.get("agent", {}).get("output_path"):
             console.print(f"Saved trajectory to [bold green]'{output_path}'[/bold green]")
         return agent

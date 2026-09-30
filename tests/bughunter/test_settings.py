@@ -111,3 +111,22 @@ def test_replaced_default_is_not_loaded_but_local_still_applies(tmp_path, monkey
     config = settings.load_bughunter_config(["agent.cost_limit=1.0"], {}, default)
 
     assert config["agent"] == {"cost_limit": 1.0, "mode": "confirm"}
+
+
+def test_role_preset_overrides_ambient_config_but_not_explicit_c(tmp_path, monkeypatch):
+    default = tmp_path / "default.yaml"
+    default.write_text("tools: {functions: true}\n")
+    global_file = tmp_path / "global.yaml"
+    global_file.write_text("tools: {mcp_servers: [web]}\n")
+    extra = tmp_path / "extra.yaml"
+    extra.write_text("tools: {mcp_servers: [explicit]}\n")
+    monkeypatch.setattr(settings, "GLOBAL_CONFIG_FILE", global_file)
+    monkeypatch.setattr(settings, "local_config_file", lambda: tmp_path / "missing.yaml")
+    preset = {"tools": {"mcp_servers": ["recon"]}}
+
+    config = settings.load_bughunter_config([str(default)], {}, default, preset=preset)
+    assert config["tools"]["mcp_servers"] == ["recon"]
+    assert config["tools"]["functions"] is True
+
+    config = settings.load_bughunter_config([str(default), str(extra)], {}, default, preset=preset)
+    assert config["tools"]["mcp_servers"] == ["explicit"]

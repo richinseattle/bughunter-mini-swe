@@ -18,11 +18,12 @@ tools:
       headers:
         Authorization: "Bearer ${GITHUB_TOKEN}"
     shodan:
-      url: https://mcp.shodan.io/mcp
-      headers:
-        Authorization: "Bearer ${SHODAN_API_KEY}"
-      # Optionally trim a chatty server's tools:
-      # include_tools: [search_hosts, host_info]
+      command: npx
+      args: ["-y", "@burtthecoder/mcp-shodan"]
+      env:
+        SHODAN_API_KEY: ${SHODAN_API_KEY}
+      # Trim a chatty server's tools so they do not flood the context:
+      include_tools: [shodan_search, ip_lookup, dns_lookup, reverse_dns_lookup]
     sqlite:
       command: uvx
       args: [mcp-server-sqlite, --db, ./findings.sqlite]

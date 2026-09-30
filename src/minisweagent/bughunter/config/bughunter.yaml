@@ -87,12 +87,26 @@ tools:
     fetch:
       command: uvx
       args: [mcp-server-fetch]
-    # shodan:
-    #   url: https://mcp.shodan.io/mcp
-    #   headers: {Authorization: "Bearer ${SHODAN_API_KEY}"}
+    shodan:
+      command: npx
+      args: ["-y", "@burtthecoder/mcp-shodan"]
+      env:
+        SHODAN_API_KEY: ${SHODAN_API_KEY}
+      # Keep the context small: expose only the core recon lookups by default.
+      # Add cve_lookup / cves_by_product / cpe_lookup if you need vulnerability data.
+      include_tools: [shodan_search, ip_lookup, dns_lookup, reverse_dns_lookup]
   mcp_server_groups:
     web: [fetch]
-    # recon: [fetch, shodan]
+    recon: [fetch, shodan]
+    # recon_no_shodan: [fetch]
   # Enable groups or individual servers here, e.g.:
   # mcp_servers: [web]
+
+# Role-specific options (selected with --role NAME, e.g. --role overthewire).
+# role:
+#   level: 0            # starting level (bandit0 uses password "bandit0")
+#   password: bandit0
+#   max_level: 0        # 0 = keep solving until a level is not solved
+#   timeout: 10
+#   state_file: ~/.config/mini-swe-agent/bandit_state.json   # optional resume
 
